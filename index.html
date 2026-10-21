@@ -52,7 +52,7 @@ h1{font-family:var(--display);font-weight:800;font-size:28px;letter-spacing:.01e
 
 .label{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
 .setup{display:flex;flex-direction:column;gap:10px}
-.days{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.days{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
 .day{border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 4px;text-align:center;display:flex;flex-direction:column;gap:1px}
 .day b{font-family:var(--display);font-size:20px;font-weight:700;line-height:1;text-transform:uppercase}
 .day span{font-size:12px;color:var(--muted)}
@@ -201,7 +201,7 @@ const PLAN = {
       {grupo:'Bíceps',ex:BICEPS_A},
       {grupo:'Abdômen',ex:ABS_A}
     ]},
-  terqui:{nome:'Terça / Quinta',curto:'Ter/Qui',foco:'Perna',titulo:'Perna (máquinas) + Tríceps',
+  ter:{nome:'Terça',curto:'Ter',foco:'Perna',titulo:'Perna (máquinas) + Tríceps',
     aquec:'5 min cardio leve + mobilidade de quadril/tornozelo + 2×15 extensora leve + 1–2 séries leves do 1º exercício.',
     blocos:[
       {grupo:'Perna',principal:true,ex:[
@@ -255,16 +255,18 @@ const PLAN = {
       {grupo:'Abdômen',ex:ABS_A}
     ]}
 };
-const ORDER = ['seg','terqui','qua','sex'];
+PLAN.qui = {...PLAN.ter, nome:'Quinta', curto:'Qui', blocos:PLAN.ter.blocos.map(b=>({...b, ex:[...b.ex]}))};
+const ORDER = ['seg','ter','qua','qui','sex'];
 Object.keys(PLAN).forEach(k=>PLAN[k].blocos.forEach((b,bi)=>{b.ex=b.ex.map((e,ei)=>({...e,id:`${k}-${bi}-${ei}`}))}));
 
 // ---------- Estado ----------
 const today = new Date();
 const todayKey = today.toISOString().slice(0,10);
-const dowDefault = ['seg','seg','terqui','qua','terqui','sex','seg'][today.getDay()];
+const dowDefault = ['seg','seg','ter','qua','qui','sex','seg'][today.getDay()];
 const fresh = () => ({date:todayKey, sel:[dowDefault], budget:50, swaps:{}, sets:{}, added:[], removed:[], openSwap:null});
 let S = fresh();
 try{ const d = JSON.parse(localStorage.getItem('ficha-draft')||'null'); if(d && d.date===todayKey) S = {...fresh(),...d, openSwap:null}; }catch(e){}
+S.sel = (S.sel||[]).filter(k=>PLAN[k]); if(!S.sel.length) S.sel=[dowDefault];
 const saveDraft = () => { try{ localStorage.setItem('ficha-draft', JSON.stringify(S)); }catch(e){} };
 let sessions = []; let col = null; let lastMsg = '';
 
