@@ -1,5 +1,5 @@
 // Muda a versão a cada atualização do app para o iPhone baixar a nova.
-const V = 'ficha-v2';
+const V = 'ficha-v3';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
@@ -11,7 +11,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   // Páginas: tenta a rede (pega atualização), cai no cache se offline.
   if (e.request.mode === 'navigate') {
-    e.respondWith(fetch(e.request).then(r => { caches.open(V).then(c => c.put('index.html', r.clone())); return r; })
+    e.respondWith(fetch(e.request, {cache: 'no-cache'}).then(r => { caches.open(V).then(c => c.put('index.html', r.clone())); return r; })
       .catch(() => caches.match('index.html')));
     return;
   }
