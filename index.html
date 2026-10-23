@@ -62,6 +62,9 @@ h1{font-family:var(--display);font-weight:800;font-size:28px;letter-spacing:.01e
 .seg button{border:0;background:none;padding:9px 0;font-weight:600;font-size:14px}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.seg.arm{grid-template-columns:repeat(3,1fr)}
+.seg.arm button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.15;padding:7px 2px}
+.seg.arm small{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
 .hint{font-size:13px;color:var(--muted);margin:0}
 
 .summary{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-top:4px}
@@ -157,6 +160,8 @@ details.tips p{margin:6px 0 0}
     <section class="setup">
       <div class="label">Treino de hoje · toque em 2 para juntar</div>
       <div class="days" id="days"></div>
+      <div class="label">Braço hoje</div>
+      <div class="seg arm" id="arm"></div>
       <div class="label">Tempo disponível</div>
       <div class="seg" id="budget"></div>
       <p class="hint" id="mode-hint"></p>
@@ -258,12 +263,22 @@ const PLAN = {
 PLAN.qui = {...PLAN.ter, nome:'Quinta', curto:'Qui', blocos:PLAN.ter.blocos.map(b=>({...b, ex:[...b.ex]}))};
 const ORDER = ['seg','ter','qua','qui','sex'];
 Object.keys(PLAN).forEach(k=>PLAN[k].blocos.forEach((b,bi)=>{b.ex=b.ex.map((e,ei)=>({...e,id:`${k}-${bi}-${ei}`}))}));
+// Braço: bíceps, tríceps ou os dois. Padrão = o que a ficha manda para o(s) dia(s) escolhido(s).
+const ARM_G = {bi:'Bíceps', tri:'Tríceps'};
+const ARM_STD = {'Bíceps': PLAN.seg.blocos.find(b=>b.grupo==='Bíceps'), 'Tríceps': PLAN.ter.blocos.find(b=>b.grupo==='Tríceps')};
+const isArm = g => g==='Bíceps' || g==='Tríceps';
+function armDefault(){
+  const g=new Set(); S.sel.forEach(k=>PLAN[k].blocos.forEach(b=>{ if(b.grupo==='Bíceps') g.add('bi'); if(b.grupo==='Tríceps') g.add('tri'); }));
+  return g.size===2 ? 'both' : ([...g][0] || 'bi');
+}
+const armNow = () => S.arm || armDefault();
+function armBlock(g){ for(const k of S.sel){ const b=PLAN[k].blocos.find(x=>x.grupo===g); if(b) return b; } return ARM_STD[g]; }
 
 // ---------- Estado ----------
 const today = new Date();
 const todayKey = today.toISOString().slice(0,10);
 const dowDefault = ['seg','seg','ter','qua','qui','sex','seg'][today.getDay()];
-const fresh = () => ({date:todayKey, sel:[dowDefault], budget:50, swaps:{}, sets:{}, added:[], removed:[], openSwap:null});
+const fresh = () => ({date:todayKey, sel:[dowDefault], arm:null, budget:50, swaps:{}, sets:{}, added:[], removed:[], openSwap:null});
 let S = fresh();
 try{ const d = JSON.parse(localStorage.getItem('ficha-draft')||'null'); if(d && d.date===todayKey) S = {...fresh(),...d, openSwap:null}; }catch(e){}
 S.sel = (S.sel||[]).filter(k=>PLAN[k]); if(!S.sel.length) S.sel=[dowDefault];
@@ -280,7 +295,15 @@ function rankOf(block, i, ex){
 function build(){
   const full = S.budget==='full';
   const seen = new Set(); const all = [];
+  const arm = armNow(); const want = arm==='both' ? ['Bíceps','Tríceps'] : [ARM_G[arm]];
+  const list = []; let armDone = false;
   S.sel.forEach(k => PLAN[k].blocos.forEach(b => {
+    if(isArm(b.grupo)){ if(!armDone){ armDone=true; want.forEach(g=>list.push({k, b:armBlock(g)})); } return; }
+    list.push({k, b});
+  }));
+  const cat = b => b.principal ? 0 : (isArm(b.grupo) ? 1 : 2);
+  list.sort((x,y)=>cat(x.b)-cat(y.b));
+  list.forEach(({k, b}) => {
     if(seen.has(b.grupo)) return; seen.add(b.grupo);
     b.ex.forEach((ex,i) => {
       const rank = rankOf(b,i,ex);
@@ -290,7 +313,7 @@ function build(){
       const secs = sets*(work+rest)+45;
       all.push({ex, day:k, grupo:b.grupo, principal:!!b.principal, rank, sets, rest, secs});
     });
-  }));
+  });
   const warm = full ? 7 : 5;
   let auto;
   if(full){ auto = new Set(all.filter(x=>!x.ex.opcional).map(x=>x.ex.id)); }
@@ -301,7 +324,7 @@ function build(){
   const inc = x => (auto.has(x.ex.id) && !S.removed.includes(x.ex.id)) || S.added.includes(x.ex.id);
   const items = all.filter(inc), cut = all.filter(x=>!inc(x));
   const mins = Math.round(items.reduce((s,x)=>s+x.secs,0)/60) + warm;
-  return {items, cut, mins, warm, full};
+  return {all, items, cut, mins, warm, full};
 }
 function current(it){
   const sw = S.swaps[it.ex.id];
@@ -317,7 +340,10 @@ function lastFor(nome){
 // ---------- Render ----------
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function sessionTitle(P){ return [...new Set(P.all.map(x=>x.grupo))].join(' + '); }
 function renderSetup(){
+  const def = armDefault(), cur = armNow(), nm = {bi:'Bíceps', tri:'Tríceps', both:'Os dois'};
+  $('arm').innerHTML = ['bi','tri','both'].map(v=>`<button data-arm="${v}" aria-pressed="${cur===v}">${nm[v]}${v===def?'<small>padrão</small>':''}</button>`).join('');
   $('days').innerHTML = ORDER.map(k=>`<button class="day" data-day="${k}" aria-pressed="${S.sel.includes(k)}"><b>${PLAN[k].curto}</b><span>${PLAN[k].foco}</span></button>`).join('');
   $('budget').innerHTML = [40,50,60,'full'].map(v=>`<button data-b="${v}" aria-pressed="${S.budget===v}">${v==='full'?'Completo':v+' min'}</button>`).join('');
   $('mode-hint').textContent = S.sel.length>1
@@ -326,7 +352,7 @@ function renderSetup(){
 }
 function renderPlan(){
   const P = build();
-  const titulo = S.sel.length>1 ? S.sel.map(k=>PLAN[k].foco).join(' + ') : PLAN[S.sel[0]].titulo;
+  const titulo = sessionTitle(P);
   let h = `<div class="summary"><h2>${titulo}</h2><span class="meta num">~${P.mins} min · ${P.items.length} exercícios</span></div>`;
   h += `<div class="warm"><b>Aquecimento (${P.warm} min):</b> ${esc(PLAN[S.sel[0]].aquec)}</div>`;
   let lastGroup = null;
@@ -402,7 +428,8 @@ document.addEventListener('click', e=>{
   if(b.dataset.day){ const k=b.dataset.day;
     if(S.sel.includes(k)){ if(S.sel.length>1) S.sel=S.sel.filter(x=>x!==k); }
     else { S.sel=[...S.sel,k].slice(-2); }
-    S.added=[]; S.removed=[]; lastMsg=''; render(); return; }
+    S.arm=null; S.added=[]; S.removed=[]; lastMsg=''; render(); return; }
+  if(b.dataset.arm){ S.arm = b.dataset.arm===armDefault() ? null : b.dataset.arm; S.added=[]; S.removed=[]; render(); return; }
   if(b.dataset.b){ S.budget = b.dataset.b==='full'?'full':+b.dataset.b; S.added=[]; S.removed=[]; render(); return; }
   if(b.dataset.swap){ S.openSwap = S.openSwap===b.dataset.swap?null:b.dataset.swap; renderPlan(); return; }
   if(b.dataset.pick){ const id=b.dataset.pick; if(b.dataset.v==='orig') delete S.swaps[id]; else S.swaps[id]=+b.dataset.v; S.openSwap=null; render(); return; }
@@ -429,7 +456,7 @@ async function finish(){
     if(rows.length){ const sets=rows.map(r=>({kg:r.kg,reps:r.reps})); exs.push({nome:c.nome,sets});
       sets.forEach(s=>{ vol+=(parseFloat(s.kg)||0)*(parseFloat(s.reps)||0); }); } });
   if(!exs.length) return;
-  const foco = S.sel.length>1 ? S.sel.map(k=>PLAN[k].foco).join(' + ') : PLAN[S.sel[0]].titulo;
+  const foco = sessionTitle(P);
   const sess = {ts:Date.now(), date:todayKey, dias:S.sel, foco, exs, vol:Math.round(vol), estMin:P.mins};
   let saved=false;
   if(col){ try{ await col.doc().set(sess); saved=true; }catch(err){} }
