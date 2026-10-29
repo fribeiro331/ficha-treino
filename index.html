@@ -65,6 +65,7 @@ h1{font-family:var(--display);font-weight:800;font-size:28px;letter-spacing:.01e
 .seg.arm{grid-template-columns:repeat(3,1fr)}
 .seg.arm button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.15;padding:7px 2px}
 .seg.arm small{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
+.arm-sw{margin-left:auto;align-self:center;border:1.5px solid var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:5px 12px;font-weight:700;font-size:13px}
 .add-ex{align-self:flex-start;border:1px dashed var(--line);background:none;color:var(--accent);border-radius:10px;padding:8px 12px;font-weight:600;font-size:14px}
 .addf{border-color:var(--accent)}
 .addf .f{display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -383,7 +384,10 @@ function renderPlan(){
   const closeGroup = g => { if(g) h += S.addForm===g ? addForm(g) : `<button class="add-ex" data-addex="${esc(g)}">+ Exercício de ${esc(g)}</button>`; };
   P.items.forEach(it=>{
     const key = it.grupo;
-    if(key!==lastGroup){ closeGroup(lastGroup); lastGroup=key; h += `<div class="block-h"><h3>${it.grupo}</h3>${S.sel.length>1?`<small>${PLAN[it.day].nome}</small>`:''}</div>`; }
+    if(key!==lastGroup){ closeGroup(lastGroup); lastGroup=key;
+      const other = key==='Bíceps' ? 'tri' : 'bi', otherNm = key==='Bíceps' ? 'Tríceps' : 'Bíceps';
+      const armBtn = isArm(key) && armNow()!=='both' ? `<button class="arm-sw" data-arm="${other}">⇄ Fazer ${otherNm}</button>` : '';
+      h += `<div class="block-h"><h3>${it.grupo}</h3>${S.sel.length>1?`<small>${PLAN[it.day].nome}</small>`:''}${armBtn}</div>`; }
     h += card(it);
   });
   closeGroup(lastGroup);
