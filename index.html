@@ -66,6 +66,10 @@ h1{font-family:var(--display);font-weight:800;font-size:28px;letter-spacing:.01e
 .seg.arm button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.15;padding:7px 2px}
 .seg.arm small{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
 .arm-sw{margin-left:auto;align-self:center;border:1.5px solid var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:5px 12px;font-weight:700;font-size:13px}
+.main-pick{display:flex;flex-direction:column;gap:6px}
+.main-pick div{display:flex;flex-wrap:wrap;gap:6px}
+.main-pick button{border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px;font-weight:700;font-size:15px}
+.main-pick small{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .add-ex{align-self:flex-start;border:1px dashed var(--line);background:none;color:var(--accent);border-radius:10px;padding:8px 12px;font-weight:600;font-size:14px}
 .addf{border-color:var(--accent)}
 .addf .f{display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -289,7 +293,7 @@ function armBlock(g){ for(const k of S.sel){ const b=PLAN[k].blocos.find(x=>x.gr
 const today = new Date();
 const todayKey = today.toISOString().slice(0,10);
 const dowDefault = ['seg','seg','ter','qua','qui','sex','seg'][today.getDay()];
-const fresh = () => ({date:todayKey, sel:[dowDefault], arm:null, extra:[], addForm:null, budget:50, swaps:{}, sets:{}, added:[], removed:[], openSwap:null});
+const fresh = () => ({date:todayKey, sel:[dowDefault], arm:null, main:{}, mainPick:null, extra:[], addForm:null, budget:50, swaps:{}, sets:{}, added:[], removed:[], openSwap:null});
 let S = fresh();
 try{ const d = JSON.parse(localStorage.getItem('ficha-draft')||'null'); if(d && d.date===todayKey) S = {...fresh(),...d, openSwap:null}; }catch(e){}
 S.sel = (S.sel||[]).filter(k=>PLAN[k]); if(!S.sel.length) S.sel=[dowDefault];
@@ -313,11 +317,12 @@ function build(){
   const list = []; let armDone = false;
   S.sel.forEach(k => PLAN[k].blocos.forEach(b => {
     if(isArm(b.grupo)){ if(!armDone){ armDone=true; want.forEach(g=>list.push({k, b:armBlock(g)})); } return; }
-    list.push({k, b});
+    if(b.principal && S.main[b.grupo]){ const t = PLAN[S.main[b.grupo]].blocos.find(x=>x.principal); list.push({k:S.main[b.grupo], b:t, from:b.grupo}); return; }
+    list.push({k, b, from:b.grupo});
   }));
   const cat = b => b.principal ? 0 : (isArm(b.grupo) ? 1 : 2);
   list.sort((x,y)=>cat(x.b)-cat(y.b));
-  list.forEach(({k, b}) => {
+  list.forEach(({k, b, from}) => {
     if(seen.has(b.grupo)) return; seen.add(b.grupo);
     b.ex.forEach((ex,i) => {
       const rank = rankOf(b,i,ex);
@@ -325,7 +330,7 @@ function build(){
       const rest = full ? Math.round((ex.rest[0]+ex.rest[1])/2) : ex.rest[0];
       const work = (ex.lado?80:45);
       const secs = sets*(work+rest)+45;
-      all.push({ex, day:k, grupo:b.grupo, principal:!!b.principal, rank, sets, rest, secs});
+      all.push({ex, day:k, grupo:b.grupo, from, principal:!!b.principal, rank, sets, rest, secs});
     });
   });
   // Exercícios que você adicionou (hoje ou fixos no dia): sempre entram.
@@ -379,15 +384,21 @@ function renderPlan(){
   const P = build();
   const titulo = sessionTitle(P);
   let h = `<div class="summary"><h2>${titulo}</h2><span class="meta num">~${P.mins} min · ${P.items.length} exercícios</span></div>`;
-  h += `<div class="warm"><b>Aquecimento (${P.warm} min):</b> ${esc(PLAN[S.sel[0]].aquec)}</div>`;
+  h += `<div class="warm"><b>Aquecimento (${P.warm} min):</b> ${esc(PLAN[(P.items.find(x=>x.principal)||{day:S.sel[0]}).day].aquec)}</div>`;
   let lastGroup = null;
   const closeGroup = g => { if(g) h += S.addForm===g ? addForm(g) : `<button class="add-ex" data-addex="${esc(g)}">+ Exercício de ${esc(g)}</button>`; };
   P.items.forEach(it=>{
     const key = it.grupo;
     if(key!==lastGroup){ closeGroup(lastGroup); lastGroup=key;
       const other = key==='Bíceps' ? 'tri' : 'bi', otherNm = key==='Bíceps' ? 'Tríceps' : 'Bíceps';
-      const armBtn = isArm(key) && armNow()!=='both' ? `<button class="arm-sw" data-arm="${other}">⇄ Fazer ${otherNm}</button>` : '';
-      h += `<div class="block-h"><h3>${it.grupo}</h3>${S.sel.length>1?`<small>${PLAN[it.day].nome}</small>`:''}${armBtn}</div>`; }
+      let armBtn = isArm(key) && armNow()!=='both' ? `<button class="arm-sw" data-arm="${other}">⇄ Fazer ${otherNm}</button>` : '';
+      if(it.principal) armBtn = `<button class="arm-sw" data-mainpick="${esc(it.from)}" aria-expanded="${S.mainPick===it.from}">⇄ Trocar grupo</button>`;
+      h += `<div class="block-h"><h3>${it.grupo}</h3>${S.sel.length>1?`<small>${PLAN[it.day].nome}</small>`:''}${armBtn}</div>`;
+      if(it.principal && S.mainPick===it.from){
+        const opts = [...new Set(ORDER.map(k=>PLAN[k].blocos.find(x=>x.principal).grupo))].filter(g=>g!==key);
+        h += `<div class="main-pick"><span class="label">Fazer hoje no lugar de ${esc(key)}</span><div>` +
+          opts.map(g=>`<button data-mainto="${esc(g)}" data-mainfrom="${esc(it.from)}">${esc(g)}${g===it.from?' <small>padrão</small>':''}</button>`).join('') + `</div></div>`;
+      } }
     h += card(it);
   });
   closeGroup(lastGroup);
@@ -478,7 +489,11 @@ document.addEventListener('click', e=>{
   if(b.dataset.day){ const k=b.dataset.day;
     if(S.sel.includes(k)){ if(S.sel.length>1) S.sel=S.sel.filter(x=>x!==k); }
     else { S.sel=[...S.sel,k].slice(-2); }
-    S.arm=null; S.added=[]; S.removed=[]; lastMsg=''; render(); return; }
+    S.arm=null; S.main={}; S.mainPick=null; S.added=[]; S.removed=[]; lastMsg=''; render(); return; }
+  if(b.dataset.mainpick){ S.mainPick = S.mainPick===b.dataset.mainpick ? null : b.dataset.mainpick; renderPlan(); return; }
+  if(b.dataset.mainto){ const from=b.dataset.mainfrom, to=b.dataset.mainto;
+    if(to===from) delete S.main[from]; else S.main[from] = ORDER.find(k=>PLAN[k].blocos.find(x=>x.principal).grupo===to);
+    S.mainPick=null; S.added=[]; S.removed=[]; render(); return; }
   if(b.dataset.arm){ S.arm = b.dataset.arm===armDefault() ? null : b.dataset.arm; S.added=[]; S.removed=[]; render(); return; }
   if(b.dataset.b){ S.budget = b.dataset.b==='full'?'full':+b.dataset.b; S.added=[]; S.removed=[]; render(); return; }
   if(b.dataset.swap){ S.openSwap = S.openSwap===b.dataset.swap?null:b.dataset.swap; renderPlan(); return; }
